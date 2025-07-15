@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import './App.css';
 import {
   LayoutDashboard,
@@ -281,6 +281,17 @@ function Dashboard() {
 
   const fileInputRef = useRef(null);
 
+  // Debounced search term for better performance
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300); // 300ms delay for debouncing
+    
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // Estados separados para cada formulário para evitar re-renderizações
   const [clientForm, setClientForm] = useState({
     empresa: '',
@@ -433,7 +444,61 @@ function Dashboard() {
     return notifications;
   }, [orders]);
 
-  // Função para calcular valor com adicional (do arquivo original)
+  // Memoized calculations for status counts to avoid re-computing on every render
+  const statusCounts = useMemo(() => {
+    const counts = {};
+    statusOptions.forEach(status => {
+      counts[status] = orders.filter(order => order.status === status).length;
+    });
+    return counts;
+  }, [orders]);
+
+  // Memoized financial calculations 
+  const financialSummary = useMemo(() => {
+    const receitas = transactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + t.valor, 0);
+    const despesas = Math.abs(transactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + t.valor, 0));
+    const saldo = transactions.reduce((sum, t) => sum + t.valor, 0);
+    const aReceber = orders.reduce((sum, order) => sum + (order.saldo_restante || 0), 0);
+    const faturamentoTotal = orders.reduce((sum, order) => sum + (order.valor_total || 0), 0);
+    
+    return { receitas, despesas, saldo, aReceber, faturamentoTotal };
+  }, [transactions, orders]);
+
+  // Memoized filtering functions for better performance
+  const filteredOrdersByStatus = useMemo(() => {
+    const filterMap = {};
+    statusOptions.forEach(status => {
+      filterMap[status] = orders.filter(order => order.status === status);
+    });
+    return filterMap;
+  }, [orders]);
+
+  const ordersToReceive = useMemo(() => {
+    return orders
+      .filter(order => order.saldo_restante > 0 && order.status !== 'Pago')
+      .sort((a, b) => new Date(a.dataEntrega) - new Date(b.dataEntrega));
+  }, [orders]);
+
+  // Search functionality with memoization and debouncing
+  const searchFilteredOrders = useMemo(() => {
+    if (!debouncedSearchTerm.trim()) {
+      return filteredOrders.length > 0 ? filteredOrders : orders;
+    }
+    
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    const ordersToSearch = filteredOrders.length > 0 ? filteredOrders : orders;
+    
+    return ordersToSearch.filter(order => 
+      order.cliente_empresa?.toLowerCase().includes(searchLower) ||
+      order.status?.toLowerCase().includes(searchLower) ||
+      order.dataPedido?.includes(debouncedSearchTerm) ||
+      order.dataEntrega?.includes(debouncedSearchTerm) ||
+      order.itens?.some(item => 
+        item.modelo?.toLowerCase().includes(searchLower) ||
+        item.cor?.toLowerCase().includes(searchLower)
+      )
+    );
+  }, [orders, filteredOrders, debouncedSearchTerm]);
   const calcularValorComAdicional = useCallback((valorUnitario, tamanhos) => {
     let valorTotal = 0;
     let quantidadeTotal = 0;
@@ -462,23 +527,20 @@ function Dashboard() {
     return Object.values(tamanhos).reduce((total, qtd) => total + (parseInt(qtd) || 0), 0);
   }, []);
 
-  // Função para filtrar pedidos por status e ir para aba pedidos
+  // Função para filtrar pedidos por status e ir para aba pedidos (optimized)
   const filtrarPedidosPorStatus = useCallback((status) => {
-    const filtered = orders.filter(order => order.status === status);
+    const filtered = filteredOrdersByStatus[status] || [];
     setFilteredOrders(filtered);
     setOrderFilter(`Status: ${status}`);
     setActiveMenu('pedidos');
-  }, [orders]);
+  }, [filteredOrdersByStatus]);
 
-  // Função para filtrar pedidos com saldo a receber e ir para aba pedidos
+  // Função para filtrar pedidos com saldo a receber e ir para aba pedidos (optimized)
   const filtrarPedidosAReceber = useCallback(() => {
-    const filtered = orders
-      .filter(order => order.saldo_restante > 0 && order.status !== 'Pago')
-      .sort((a, b) => new Date(a.dataEntrega) - new Date(b.dataEntrega));
-    setFilteredOrders(filtered);
+    setFilteredOrders(ordersToReceive);
     setOrderFilter('A Receber (ordenado por data de entrega)');
     setActiveMenu('pedidos');
-  }, [orders]);
+  }, [ordersToReceive]);
 
   const openModal = useCallback((type) => {
     setModalType(type);
@@ -699,7 +761,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">A Receber</p>
                 <p className="text-2xl font-bold text-white">
-                  R$ {orders.reduce((sum, order) => sum + (order.saldo_restante || 0), 0).toFixed(2)}
+                  R$ {financialSummary.aReceber.toFixed(2)}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">Clique para ver detalhes</p>
               </div>
@@ -711,7 +773,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Faturamento Total</p>
                 <p className="text-2xl font-bold text-white">
-                  R$ {orders.reduce((sum, order) => sum + (order.valor_total || 0), 0).toFixed(2)}
+                  R$ {financialSummary.faturamentoTotal.toFixed(2)}
                 </p>
               </div>
               <TrendingUp className="w-8 h-8 text-emerald-500" />
@@ -740,7 +802,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Receitas</p>
                 <p className="text-2xl font-bold text-emerald-500">
-                  R$ {transactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                  R$ {financialSummary.receitas.toFixed(2)}
                 </p>
               </div>
               <TrendingUp className="w-8 h-8 text-emerald-500" />
@@ -751,7 +813,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Despesas</p>
                 <p className="text-2xl font-bold text-red-500">
-                  R$ {Math.abs(transactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + t.valor, 0)).toFixed(2)}
+                  R$ {financialSummary.despesas.toFixed(2)}
                 </p>
               </div>
               <TrendingDown className="w-8 h-8 text-red-500" />
@@ -762,7 +824,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Saldo</p>
                 <p className="text-2xl font-bold text-emerald-500">
-                  R$ {transactions.reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                  R$ {financialSummary.saldo.toFixed(2)}
                 </p>
               </div>
               <DollarSign className="w-8 h-8 text-emerald-500" />
@@ -788,7 +850,7 @@ function Dashboard() {
         <h2 className="text-xl font-semibold text-white mb-6">Status dos Pedidos (Clique para filtrar)</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {statusOptions.map((status) => {
-            const count = orders.filter(o => o.status === status).length;
+            const count = statusCounts[status] || 0;
             return (
               <div 
                 key={status} 
@@ -826,12 +888,16 @@ function Dashboard() {
         <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-4 flex justify-between items-center">
           <div>
             <p className="text-blue-400 font-medium">Filtro Ativo: {orderFilter}</p>
-            <p className="text-blue-300 text-sm">{filteredOrders.length} pedido(s) encontrado(s)</p>
+            <p className="text-blue-300 text-sm">
+              {searchFilteredOrders.length} pedido(s) encontrado(s)
+              {debouncedSearchTerm && ` (busca: "${debouncedSearchTerm}")`}
+            </p>
           </div>
           <button 
             onClick={() => {
               setFilteredOrders([]);
               setOrderFilter('');
+              setSearchTerm('');
             }}
             className="text-blue-400 hover:text-blue-300"
           >
@@ -846,6 +912,8 @@ function Dashboard() {
             <input 
               type="text" 
               placeholder="Buscar pedidos..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 border border-gray-600"
             />
           </div>
@@ -861,7 +929,7 @@ function Dashboard() {
         </div>
         
         <div className="space-y-4">
-          {(filteredOrders.length > 0 ? filteredOrders : orders).map((order) => (
+          {searchFilteredOrders.map((order) => (
             <div key={order.id} className="bg-gray-700 rounded-lg p-4">
               <div className="flex justify-between items-start">
                 <div>
@@ -926,15 +994,15 @@ function Dashboard() {
           ))}
         </div>
         
-        {(filteredOrders.length === 0 && orderFilter === '') && orders.length === 0 && (
+        {searchFilteredOrders.length === 0 && orderFilter === '' && debouncedSearchTerm === '' && (
           <div className="text-center py-8 text-gray-400">
             Nenhum pedido encontrado. Clique em "Novo Pedido" para começar.
           </div>
         )}
 
-        {filteredOrders.length === 0 && orderFilter !== '' && (
+        {searchFilteredOrders.length === 0 && (orderFilter !== '' || debouncedSearchTerm !== '') && (
           <div className="text-center py-8 text-gray-400">
-            Nenhum pedido encontrado para o filtro aplicado.
+            Nenhum pedido encontrado para o filtro/busca aplicado.
           </div>
         )}
       </div>
@@ -1137,7 +1205,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Saldo Atual</p>
               <p className="text-2xl font-bold text-emerald-500">
-                R$ {transactions.reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                R$ {financialSummary.saldo.toFixed(2)}
               </p>
             </div>
             <DollarSign className="w-8 h-8 text-emerald-500" />
@@ -1148,7 +1216,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Receitas Totais</p>
               <p className="text-2xl font-bold text-green-500">
-                R$ {transactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                R$ {financialSummary.receitas.toFixed(2)}
               </p>
             </div>
             <TrendingUp className="w-8 h-8 text-green-500" />
@@ -1159,7 +1227,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Despesas Totais</p>
               <p className="text-2xl font-bold text-red-500">
-                R$ {Math.abs(transactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + t.valor, 0)).toFixed(2)}
+                R$ {financialSummary.despesas.toFixed(2)}
               </p>
             </div>
             <TrendingDown className="w-8 h-8 text-red-500" />
@@ -1170,7 +1238,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Pendentes</p>
               <p className="text-2xl font-bold text-yellow-500">
-                R$ {orders.reduce((sum, order) => sum + (order.saldo_restante || 0), 0).toFixed(2)}
+                R$ {financialSummary.aReceber.toFixed(2)}
               </p>
             </div>
             <Clock className="w-8 h-8 text-yellow-500" />
