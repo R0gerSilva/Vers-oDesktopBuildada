@@ -1,5 +1,7 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import './App.css';
+import { DashboardProvider } from './DashboardContext';
+import { useUI, useForms, useApp, useData } from './DashboardHooks';
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -261,88 +263,13 @@ let mockAgenda = [
 ];
 
 function Dashboard() {
-  const [activeMenu, setActiveMenu] = useState('dashboard');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterPeriod, setFilterPeriod] = useState('30dias');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [agendaView, setAgendaView] = useState('hoje');
-  const [agendaViewType, setAgendaViewType] = useState('lista');
-  const [editingClient, setEditingClient] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [filteredOrders, setFilteredOrders] = useState([]);
-  const [orderFilter, setOrderFilter] = useState('');
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [logoUrl, setLogoUrl] = useState(null);
+  // Using centralized state hooks instead of individual useState calls
+  const ui = useUI();
+  const forms = useForms();
+  const app = useApp();
+  const data = useData();
 
   const fileInputRef = useRef(null);
-
-  // Estados separados para cada formulário para evitar re-renderizações
-  const [clientForm, setClientForm] = useState({
-    empresa: '',
-    contato: '',
-    telefone: '',
-    endereco: ''
-  });
-
-  const [orderForm, setOrderForm] = useState({
-    cliente_id: '',
-    cliente_empresa: '',
-    itens: [{
-      modelo: '',
-      tecido: '',
-      cor: '',
-      tamanhos: {},
-      personalizacao: '',
-      posicoes: [],
-      valor_unitario: 0,
-      quantidade_total: 0,
-      valor_adicional: 0
-    }],
-    previsao_entrega: '',
-    observacoes: '',
-    layout_images: []
-  });
-
-  const [transactionForm, setTransactionForm] = useState({
-    descricao: '',
-    valor: '',
-    categoria: ''
-  });
-
-  const [appointmentForm, setAppointmentForm] = useState({
-    titulo: '',
-    tipo: 'entrega',
-    data: '',
-    hora: '',
-    cliente: ''
-  });
-
-  const [catalogConfig, setCatalogConfig] = useState({
-    ativo: true,
-    nome: 'Ideal SilkScreen',
-    descricao: 'Serigrafia e bordados personalizados',
-    endereco: 'idealsilkscreen',
-    telefone: '(11) 99999-9999',
-    corPrincipal: '#10b981',
-    corTexto: '#ffffff'
-  });
-
-  const [buscaCliente, setBuscaCliente] = useState('');
-  const [clientesFiltrados, setClientesFiltrados] = useState([]);
-  const [mostrarFormularioCliente, setMostrarFormularioCliente] = useState(false);
-
-  // Estados para dados locais
-  const [clients, setClients] = useState(mockClients);
-  const [orders, setOrders] = useState(mockOrders);
-  const [products, setProducts] = useState(mockProducts);
-  const [categories, setCategories] = useState(mockCategories);
-  const [transactions, setTransactions] = useState(mockTransactions);
-  const [agenda, setAgenda] = useState(mockAgenda);
 
   // Função para upload da logo
   const handleLogoUpload = (event) => {
@@ -350,7 +277,7 @@ function Dashboard() {
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setLogoUrl(e.target.result);
+        ui.setLogoUrl(e.target.result);
         localStorage.setItem('logoEmpresa', e.target.result);
       };
       reader.readAsDataURL(file);
@@ -361,9 +288,9 @@ function Dashboard() {
   React.useEffect(() => {
     const logoSalva = localStorage.getItem('logoEmpresa');
     if (logoSalva) {
-      setLogoUrl(logoSalva);
+      ui.setLogoUrl(logoSalva);
     }
-  }, []);
+  }, [ui]);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -380,7 +307,7 @@ function Dashboard() {
     const hoje = new Date();
     const notifications = [];
 
-    orders.forEach(order => {
+    data.orders.forEach(order => {
       if (order.dataEntrega && order.status !== 'Pago' && order.status !== 'Entregue') {
         const dataEntrega = new Date(order.dataEntrega);
         const diffTime = dataEntrega - hoje;
@@ -431,7 +358,7 @@ function Dashboard() {
     });
 
     return notifications;
-  }, [orders]);
+  }, [data.orders]);
 
   // Função para calcular valor com adicional (do arquivo original)
   const calcularValorComAdicional = useCallback((valorUnitario, tamanhos) => {
@@ -464,116 +391,84 @@ function Dashboard() {
 
   // Função para filtrar pedidos por status e ir para aba pedidos
   const filtrarPedidosPorStatus = useCallback((status) => {
-    const filtered = orders.filter(order => order.status === status);
-    setFilteredOrders(filtered);
-    setOrderFilter(`Status: ${status}`);
-    setActiveMenu('pedidos');
-  }, [orders]);
+    const filtered = data.orders.filter(order => order.status === status);
+    app.setFilteredOrders(filtered);
+    app.setOrderFilter(`Status: ${status}`);
+    ui.setActiveMenu('pedidos');
+  }, [data.orders, app, ui]);
 
   // Função para filtrar pedidos com saldo a receber e ir para aba pedidos
   const filtrarPedidosAReceber = useCallback(() => {
-    const filtered = orders
+    const filtered = data.orders
       .filter(order => order.saldo_restante > 0 && order.status !== 'Pago')
       .sort((a, b) => new Date(a.dataEntrega) - new Date(b.dataEntrega));
-    setFilteredOrders(filtered);
-    setOrderFilter('A Receber (ordenado por data de entrega)');
-    setActiveMenu('pedidos');
-  }, [orders]);
+    app.setFilteredOrders(filtered);
+    app.setOrderFilter('A Receber (ordenado por data de entrega)');
+    ui.setActiveMenu('pedidos');
+  }, [data.orders, app, ui]);
 
   const openModal = useCallback((type) => {
-    setModalType(type);
-    setShowModal(true);
-  }, []);
+    ui.openModal(type);
+  }, [ui]);
 
   const closeModal = useCallback(() => {
-    setShowModal(false);
-    setModalType('');
-    // Reset form states
-    setClientForm({ empresa: '', contato: '', telefone: '', endereco: '' });
-    setOrderForm({
-      cliente_id: '',
-      cliente_empresa: '',
-      itens: [{
-        modelo: '',
-        tecido: '',
-        cor: '',
-        tamanhos: {},
-        personalizacao: '',
-        posicoes: [],
-        valor_unitario: 0,
-        quantidade_total: 0,
-        valor_adicional: 0
-      }],
-      previsao_entrega: '',
-      observacoes: '',
-      layout_images: []
-    });
-    setTransactionForm({ descricao: '', valor: '', categoria: '' });
-    setAppointmentForm({ titulo: '', tipo: 'entrega', data: '', hora: '', cliente: '' });
-    setBuscaCliente('');
-    setClientesFiltrados([]);
-    setMostrarFormularioCliente(false);
-  }, []);
+    ui.closeModal();
+  }, [ui]);
 
   // FUNÇÕES PARA CLIENTES (otimizadas para evitar re-renderizações)
   const criarCliente = useCallback(async (e) => {
     e.preventDefault();
-    setLoading(true);
+    app.setLoading(true);
     
     try {
       const novoClienteData = {
         id: Date.now(),
-        ...clientForm,
-        email: `${clientForm.contato.toLowerCase().replace(' ', '.')}@${clientForm.empresa.toLowerCase().replace(' ', '')}.com`,
+        ...forms.clientForm,
+        email: `${forms.clientForm.contato.toLowerCase().replace(' ', '.')}@${forms.clientForm.empresa.toLowerCase().replace(' ', '')}.com`,
         totalCompras: 0,
         ultimaCompra: null,
         pedidosTotal: 0
       };
       
-      setClients(prev => [...prev, novoClienteData]);
-      setClientForm({ empresa: '', contato: '', telefone: '', endereco: '' });
+      data.addClient(novoClienteData);
       closeModal();
       alert('Cliente criado com sucesso!');
     } catch (error) {
       console.error('Erro ao criar cliente:', error);
       alert('Erro ao criar cliente');
     } finally {
-      setLoading(false);
+      app.setLoading(false);
     }
-  }, [clientForm, closeModal]);
+  }, [forms.clientForm, app, data, closeModal]);
 
   const excluirCliente = useCallback((clienteId, empresaCliente) => {
     if (window.confirm(`Tem certeza que deseja excluir o cliente "${empresaCliente}"?`)) {
-      setClients(prev => prev.filter(c => c.id !== clienteId));
+      data.deleteClient(clienteId);
       alert('Cliente excluído com sucesso!');
     }
-  }, []);
+  }, [data]);
 
   const iniciarEdicaoCliente = useCallback((cliente) => {
-    setEditingClient(cliente.id);
-    setClientForm({
+    app.setEditingClient(cliente.id);
+    forms.updateClientForm({
       empresa: cliente.empresa,
       contato: cliente.contato,
       telefone: cliente.telefone,
       endereco: cliente.endereco
     });
-  }, []);
+  }, [app, forms]);
 
   const salvarEdicaoCliente = useCallback(() => {
-    setClients(prev => prev.map(c => 
-      c.id === editingClient 
-        ? { ...c, ...clientForm }
-        : c
-    ));
-    setEditingClient(null);
-    setClientForm({ empresa: '', contato: '', telefone: '', endereco: '' });
+    data.updateClient(app.editingClient, forms.clientForm);
+    app.setEditingClient(null);
+    forms.resetClientForm();
     alert('Cliente atualizado com sucesso!');
-  }, [editingClient, clientForm]);
+  }, [app.editingClient, forms.clientForm, data, app, forms]);
 
   const cancelarEdicaoCliente = useCallback(() => {
-    setEditingClient(null);
-    setClientForm({ empresa: '', contato: '', telefone: '', endereco: '' });
-  }, []);
+    app.setEditingClient(null);
+    forms.resetClientForm();
+  }, [app, forms]);
 
   const StatusIcon = ({ status }) => {
     switch(status) {
@@ -591,20 +486,20 @@ function Dashboard() {
   };
 
   const Modal = ({ children }) => {
-    if (!showModal) return null;
+    if (!ui.showModal) return null;
     
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
           <div className="flex justify-between items-center p-6 border-b border-gray-700">
             <h3 className="text-xl font-semibold text-white">
-              {modalType === 'produto' && 'Novo Produto'}
-              {modalType === 'categoria' && 'Nova Categoria'}
-              {modalType === 'pedido' && 'Novo Pedido'}
-              {modalType === 'cliente' && 'Novo Cliente'}
-              {modalType === 'receita' && 'Nova Receita'}
-              {modalType === 'despesa' && 'Nova Despesa'}
-              {modalType === 'compromisso' && 'Novo Compromisso'}
+              {ui.modalType === 'produto' && 'Novo Produto'}
+              {ui.modalType === 'categoria' && 'Nova Categoria'}
+              {ui.modalType === 'pedido' && 'Novo Pedido'}
+              {ui.modalType === 'cliente' && 'Novo Cliente'}
+              {ui.modalType === 'receita' && 'Nova Receita'}
+              {ui.modalType === 'despesa' && 'Nova Despesa'}
+              {ui.modalType === 'compromisso' && 'Novo Compromisso'}
             </h3>
             <button onClick={closeModal} className="text-gray-400 hover:text-white">
               <X className="w-6 h-6" />
@@ -626,8 +521,8 @@ function Dashboard() {
           <label className="block text-gray-300 text-sm mb-2">Nome da Empresa *</label>
           <input 
             type="text" 
-            value={clientForm.empresa}
-            onChange={(e) => setClientForm(prev => ({...prev, empresa: e.target.value}))}
+            value={forms.clientForm.empresa}
+            onChange={(e) => forms.updateClientForm({empresa: e.target.value})}
             className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600" 
             required
           />
@@ -636,8 +531,8 @@ function Dashboard() {
           <label className="block text-gray-300 text-sm mb-2">Nome do Contato *</label>
           <input 
             type="text" 
-            value={clientForm.contato}
-            onChange={(e) => setClientForm(prev => ({...prev, contato: e.target.value}))}
+            value={forms.clientForm.contato}
+            onChange={(e) => forms.updateClientForm({contato: e.target.value})}
             className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600" 
             required
           />
@@ -646,8 +541,8 @@ function Dashboard() {
           <label className="block text-gray-300 text-sm mb-2">Telefone/WhatsApp *</label>
           <input 
             type="text" 
-            value={clientForm.telefone}
-            onChange={(e) => setClientForm(prev => ({...prev, telefone: e.target.value}))}
+            value={forms.clientForm.telefone}
+            onChange={(e) => forms.updateClientForm({telefone: e.target.value})}
             className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600" 
             required
           />
@@ -656,8 +551,8 @@ function Dashboard() {
           <label className="block text-gray-300 text-sm mb-2">Endereço *</label>
           <input 
             type="text" 
-            value={clientForm.endereco}
-            onChange={(e) => setClientForm(prev => ({...prev, endereco: e.target.value}))}
+            value={forms.clientForm.endereco}
+            onChange={(e) => forms.updateClientForm({endereco: e.target.value})}
             className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600" 
             required
           />
@@ -666,10 +561,10 @@ function Dashboard() {
       <div className="flex gap-3 pt-4">
         <button
           type="submit"
-          disabled={loading}
+          disabled={app.loading}
           className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 px-4 rounded-lg disabled:opacity-50"
         >
-          {loading ? 'Salvando...' : 'Salvar Cliente'}
+          {app.loading ? 'Salvando...' : 'Salvar Cliente'}
         </button>
         <button type="button" onClick={closeModal} className="px-6 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
           Cancelar
@@ -689,7 +584,7 @@ function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-400 text-sm">Total de Pedidos</p>
-                <p className="text-2xl font-bold text-white">{orders.length}</p>
+                <p className="text-2xl font-bold text-white">{data.orders.length}</p>
               </div>
               <ShoppingBag className="w-8 h-8 text-emerald-500" />
             </div>
@@ -699,7 +594,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">A Receber</p>
                 <p className="text-2xl font-bold text-white">
-                  R$ {orders.reduce((sum, order) => sum + (order.saldo_restante || 0), 0).toFixed(2)}
+                  R$ {data.orders.reduce((sum, order) => sum + (order.saldo_restante || 0), 0).toFixed(2)}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">Clique para ver detalhes</p>
               </div>
@@ -711,7 +606,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Faturamento Total</p>
                 <p className="text-2xl font-bold text-white">
-                  R$ {orders.reduce((sum, order) => sum + (order.valor_total || 0), 0).toFixed(2)}
+                  R$ {data.orders.reduce((sum, order) => sum + (order.valor_total || 0), 0).toFixed(2)}
                 </p>
               </div>
               <TrendingUp className="w-8 h-8 text-emerald-500" />
@@ -740,7 +635,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Receitas</p>
                 <p className="text-2xl font-bold text-emerald-500">
-                  R$ {transactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                  R$ {data.transactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
                 </p>
               </div>
               <TrendingUp className="w-8 h-8 text-emerald-500" />
@@ -751,7 +646,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Despesas</p>
                 <p className="text-2xl font-bold text-red-500">
-                  R$ {Math.abs(transactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + t.valor, 0)).toFixed(2)}
+                  R$ {Math.abs(data.transactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + t.valor, 0)).toFixed(2)}
                 </p>
               </div>
               <TrendingDown className="w-8 h-8 text-red-500" />
@@ -762,7 +657,7 @@ function Dashboard() {
               <div>
                 <p className="text-gray-400 text-sm">Saldo</p>
                 <p className="text-2xl font-bold text-emerald-500">
-                  R$ {transactions.reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                  R$ {data.transactions.reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
                 </p>
               </div>
               <DollarSign className="w-8 h-8 text-emerald-500" />
@@ -788,7 +683,7 @@ function Dashboard() {
         <h2 className="text-xl font-semibold text-white mb-6">Status dos Pedidos (Clique para filtrar)</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {statusOptions.map((status) => {
-            const count = orders.filter(o => o.status === status).length;
+            const count = data.orders.filter(o => o.status === status).length;
             return (
               <div 
                 key={status} 
@@ -822,16 +717,16 @@ function Dashboard() {
       </div>
 
       {/* Mostrar filtro ativo */}
-      {orderFilter && (
+      {app.orderFilter && (
         <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-4 flex justify-between items-center">
           <div>
-            <p className="text-blue-400 font-medium">Filtro Ativo: {orderFilter}</p>
-            <p className="text-blue-300 text-sm">{filteredOrders.length} pedido(s) encontrado(s)</p>
+            <p className="text-blue-400 font-medium">Filtro Ativo: {app.orderFilter}</p>
+            <p className="text-blue-300 text-sm">{app.filteredOrders.length} pedido(s) encontrado(s)</p>
           </div>
           <button 
             onClick={() => {
-              setFilteredOrders([]);
-              setOrderFilter('');
+              app.setFilteredOrders([]);
+              app.setOrderFilter('');
             }}
             className="text-blue-400 hover:text-blue-300"
           >
@@ -861,7 +756,7 @@ function Dashboard() {
         </div>
         
         <div className="space-y-4">
-          {(filteredOrders.length > 0 ? filteredOrders : orders).map((order) => (
+          {(app.filteredOrders.length > 0 ? app.filteredOrders : data.orders).map((order) => (
             <div key={order.id} className="bg-gray-700 rounded-lg p-4">
               <div className="flex justify-between items-start">
                 <div>
@@ -926,13 +821,13 @@ function Dashboard() {
           ))}
         </div>
         
-        {(filteredOrders.length === 0 && orderFilter === '') && orders.length === 0 && (
+        {(app.filteredOrders.length === 0 && app.orderFilter === '') && data.orders.length === 0 && (
           <div className="text-center py-8 text-gray-400">
             Nenhum pedido encontrado. Clique em "Novo Pedido" para começar.
           </div>
         )}
 
-        {filteredOrders.length === 0 && orderFilter !== '' && (
+        {app.filteredOrders.length === 0 && app.orderFilter !== '' && (
           <div className="text-center py-8 text-gray-400">
             Nenhum pedido encontrado para o filtro aplicado.
           </div>
@@ -977,14 +872,14 @@ function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {clients.map((client) => (
+              {data.clients.map((client) => (
                 <tr key={client.id} className="border-t border-gray-700 hover:bg-gray-700/50">
                   <td className="px-6 py-4">
-                    {editingClient === client.id ? (
+                    {app.editingClient === client.id ? (
                       <input
                         type="text"
-                        value={clientForm.empresa}
-                        onChange={(e) => setClientForm(prev => ({...prev, empresa: e.target.value}))}
+                        value={forms.clientForm.empresa}
+                        onChange={(e) => forms.updateClientForm({empresa: e.target.value})}
                         className="w-full p-2 bg-gray-600 text-white rounded border border-gray-500"
                       />
                     ) : (
@@ -992,11 +887,11 @@ function Dashboard() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {editingClient === client.id ? (
+                    {app.editingClient === client.id ? (
                       <input
                         type="text"
-                        value={clientForm.contato}
-                        onChange={(e) => setClientForm(prev => ({...prev, contato: e.target.value}))}
+                        value={forms.clientForm.contato}
+                        onChange={(e) => forms.updateClientForm({contato: e.target.value})}
                         className="w-full p-2 bg-gray-600 text-white rounded border border-gray-500"
                       />
                     ) : (
@@ -1004,11 +899,11 @@ function Dashboard() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {editingClient === client.id ? (
+                    {app.editingClient === client.id ? (
                       <input
                         type="text"
-                        value={clientForm.telefone}
-                        onChange={(e) => setClientForm(prev => ({...prev, telefone: e.target.value}))}
+                        value={forms.clientForm.telefone}
+                        onChange={(e) => forms.updateClientForm({telefone: e.target.value})}
                         className="w-full p-2 bg-gray-600 text-white rounded border border-gray-500"
                       />
                     ) : (
@@ -1016,11 +911,11 @@ function Dashboard() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {editingClient === client.id ? (
+                    {app.editingClient === client.id ? (
                       <input
                         type="text"
-                        value={clientForm.endereco}
-                        onChange={(e) => setClientForm(prev => ({...prev, endereco: e.target.value}))}
+                        value={forms.clientForm.endereco}
+                        onChange={(e) => forms.updateClientForm({endereco: e.target.value})}
                         className="w-full p-2 bg-gray-600 text-white rounded border border-gray-500"
                       />
                     ) : (
@@ -1028,7 +923,7 @@ function Dashboard() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {editingClient === client.id ? (
+                    {app.editingClient === client.id ? (
                       <div className="flex gap-2">
                         <button
                           onClick={salvarEdicaoCliente}
@@ -1066,7 +961,7 @@ function Dashboard() {
           </table>
         </div>
 
-        {clients.length === 0 && (
+        {data.clients.length === 0 && (
           <div className="text-center py-8 text-gray-400">
             Nenhum cliente encontrado. Clique em "Novo Cliente" para começar.
           </div>
@@ -1095,7 +990,7 @@ function Dashboard() {
             Nova Despesa
           </button>
           <button 
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => ui.setShowFilters(!ui.showFilters)}
             className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
           >
             <Filter className="w-4 h-4" />
@@ -1104,18 +999,18 @@ function Dashboard() {
         </div>
       </div>
 
-      {showFilters && (
+      {ui.showFilters && (
         <div className="bg-gray-800 rounded-xl p-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <button 
-              onClick={() => setFilterPeriod('7dias')}
-              className={`p-3 rounded-lg transition-colors ${filterPeriod === '7dias' ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              onClick={() => ui.setFilterPeriod('7dias')}
+              className={`p-3 rounded-lg transition-colors ${ui.filterPeriod === '7dias' ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
             >
               Últimos 7 Dias
             </button>
             <button 
-              onClick={() => setFilterPeriod('30dias')}
-              className={`p-3 rounded-lg transition-colors ${filterPeriod === '30dias' ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              onClick={() => ui.setFilterPeriod('30dias')}
+              className={`p-3 rounded-lg transition-colors ${ui.filterPeriod === '30dias' ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
             >
               Últimos 30 Dias
             </button>
@@ -1137,7 +1032,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Saldo Atual</p>
               <p className="text-2xl font-bold text-emerald-500">
-                R$ {transactions.reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                R$ {data.transactions.reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
               </p>
             </div>
             <DollarSign className="w-8 h-8 text-emerald-500" />
@@ -1148,7 +1043,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Receitas Totais</p>
               <p className="text-2xl font-bold text-green-500">
-                R$ {transactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
+                R$ {data.transactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + t.valor, 0).toFixed(2)}
               </p>
             </div>
             <TrendingUp className="w-8 h-8 text-green-500" />
@@ -1159,7 +1054,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Despesas Totais</p>
               <p className="text-2xl font-bold text-red-500">
-                R$ {Math.abs(transactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + t.valor, 0)).toFixed(2)}
+                R$ {Math.abs(data.transactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + t.valor, 0)).toFixed(2)}
               </p>
             </div>
             <TrendingDown className="w-8 h-8 text-red-500" />
@@ -1170,7 +1065,7 @@ function Dashboard() {
             <div>
               <p className="text-gray-400 text-sm">Pendentes</p>
               <p className="text-2xl font-bold text-yellow-500">
-                R$ {orders.reduce((sum, order) => sum + (order.saldo_restante || 0), 0).toFixed(2)}
+                R$ {data.orders.reduce((sum, order) => sum + (order.saldo_restante || 0), 0).toFixed(2)}
               </p>
             </div>
             <Clock className="w-8 h-8 text-yellow-500" />
@@ -1204,7 +1099,7 @@ function Dashboard() {
         <div className="bg-gray-800 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Transações Recentes</h3>
           <div className="space-y-3 max-h-64 overflow-y-auto">
-            {transactions.slice(-10).reverse().map((transaction) => (
+            {data.transactions.slice(-10).reverse().map((transaction) => (
               <div key={transaction.id} className="flex justify-between items-center p-3 bg-gray-700 rounded-lg">
                 <div>
                   <p className="text-white text-sm">{transaction.descricao}</p>
@@ -1234,11 +1129,11 @@ function Dashboard() {
             Novo Compromisso
           </button>
           <button 
-            onClick={() => setAgendaViewType(agendaViewType === 'lista' ? 'calendario' : 'lista')}
+            onClick={() => ui.setAgendaViewType(ui.agendaViewType === 'lista' ? 'calendario' : 'lista')}
             className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
           >
-            {agendaViewType === 'lista' ? <CalendarDays className="w-4 h-4" /> : <List className="w-4 h-4" />}
-            {agendaViewType === 'lista' ? 'Calendário' : 'Lista'}
+            {ui.agendaViewType === 'lista' ? <CalendarDays className="w-4 h-4" /> : <List className="w-4 h-4" />}
+            {ui.agendaViewType === 'lista' ? 'Calendário' : 'Lista'}
           </button>
         </div>
       </div>
@@ -1253,9 +1148,9 @@ function Dashboard() {
           ].map((view) => (
             <button 
               key={view.id}
-              onClick={() => setAgendaView(view.id)}
+              onClick={() => ui.setAgendaView(view.id)}
               className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                agendaView === view.id ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                ui.agendaView === view.id ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
               {view.label}
@@ -1282,9 +1177,9 @@ function Dashboard() {
           </div>
         </div>
 
-        {agendaViewType === 'lista' ? (
+        {ui.agendaViewType === 'lista' ? (
           <div className="space-y-3">
-            {agenda.map((item) => (
+            {data.agenda.map((item) => (
               <div key={item.id} className="flex justify-between items-center p-4 bg-gray-700 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full ${
@@ -1351,8 +1246,8 @@ function Dashboard() {
               <label className="relative inline-flex items-center cursor-pointer">
                 <input 
                   type="checkbox" 
-                  checked={catalogConfig.ativo}
-                  onChange={(e) => setCatalogConfig({...catalogConfig, ativo: e.target.checked})}
+                  checked={forms.catalogConfig.ativo}
+                  onChange={(e) => forms.updateCatalogConfig({ativo: e.target.checked})}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
@@ -1363,8 +1258,8 @@ function Dashboard() {
               <label className="block text-gray-300 text-sm mb-2">Nome da Loja</label>
               <input 
                 type="text" 
-                value={catalogConfig.nome}
-                onChange={(e) => setCatalogConfig({...catalogConfig, nome: e.target.value})}
+                value={forms.catalogConfig.nome}
+                onChange={(e) => forms.updateCatalogConfig({nome: e.target.value})}
                 className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600"
               />
             </div>
@@ -1373,8 +1268,8 @@ function Dashboard() {
               <label className="block text-gray-300 text-sm mb-2">Descrição</label>
               <textarea 
                 rows="3"
-                value={catalogConfig.descricao}
-                onChange={(e) => setCatalogConfig({...catalogConfig, descricao: e.target.value})}
+                value={forms.catalogConfig.descricao}
+                onChange={(e) => forms.updateCatalogConfig({descricao: e.target.value})}
                 className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600"
               ></textarea>
             </div>
@@ -1385,8 +1280,8 @@ function Dashboard() {
                 <span className="text-gray-400 text-sm">sellvibe.store/</span>
                 <input 
                   type="text" 
-                  value={catalogConfig.endereco}
-                  onChange={(e) => setCatalogConfig({...catalogConfig, endereco: e.target.value})}
+                  value={forms.catalogConfig.endereco}
+                  onChange={(e) => forms.updateCatalogConfig({endereco: e.target.value})}
                   className="flex-1 bg-gray-700 text-white rounded-r-lg px-3 py-2 border border-gray-600 border-l-0"
                 />
               </div>
@@ -1396,8 +1291,8 @@ function Dashboard() {
               <label className="block text-gray-300 text-sm mb-2">Telefone/WhatsApp</label>
               <input 
                 type="text" 
-                value={catalogConfig.telefone}
-                onChange={(e) => setCatalogConfig({...catalogConfig, telefone: e.target.value})}
+                value={forms.catalogConfig.telefone}
+                onChange={(e) => forms.updateCatalogConfig({telefone: e.target.value})}
                 className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600"
               />
             </div>
@@ -1407,8 +1302,8 @@ function Dashboard() {
                 <label className="block text-gray-300 text-sm mb-2">Cor Principal</label>
                 <input 
                   type="color" 
-                  value={catalogConfig.corPrincipal}
-                  onChange={(e) => setCatalogConfig({...catalogConfig, corPrincipal: e.target.value})}
+                  value={forms.catalogConfig.corPrincipal}
+                  onChange={(e) => forms.updateCatalogConfig({corPrincipal: e.target.value})}
                   className="w-full h-10 bg-gray-700 rounded-lg border border-gray-600"
                 />
               </div>
@@ -1416,8 +1311,8 @@ function Dashboard() {
                 <label className="block text-gray-300 text-sm mb-2">Cor do Texto</label>
                 <input 
                   type="color" 
-                  value={catalogConfig.corTexto}
-                  onChange={(e) => setCatalogConfig({...catalogConfig, corTexto: e.target.value})}
+                  value={forms.catalogConfig.corTexto}
+                  onChange={(e) => forms.updateCatalogConfig({corTexto: e.target.value})}
                   className="w-full h-10 bg-gray-700 rounded-lg border border-gray-600"
                 />
               </div>
@@ -1432,7 +1327,7 @@ function Dashboard() {
         <div className="bg-gray-800 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Produtos no Catálogo</h3>
           <div className="space-y-3 max-h-96 overflow-y-auto">
-            {products.map((product) => (
+            {data.products.map((product) => (
               <div key={product.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
                 <div className="flex items-center gap-3">
                   <img src={product.imagem} alt={product.nome} className="w-12 h-12 rounded-lg object-cover" />
@@ -1457,15 +1352,15 @@ function Dashboard() {
         <h3 className="text-lg font-semibold text-white mb-4">Preview do Catálogo</h3>
         <div 
           className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center"
-          style={{ backgroundColor: catalogConfig.corPrincipal + '10', borderColor: catalogConfig.corPrincipal }}
+          style={{ backgroundColor: forms.catalogConfig.corPrincipal + '10', borderColor: forms.catalogConfig.corPrincipal }}
         >
           <div className="max-w-sm mx-auto">
-            <h4 className="text-xl font-bold mb-2" style={{ color: catalogConfig.corPrincipal }}>
-              {catalogConfig.nome}
+            <h4 className="text-xl font-bold mb-2" style={{ color: forms.catalogConfig.corPrincipal }}>
+              {forms.catalogConfig.nome}
             </h4>
-            <p className="text-gray-400 text-sm mb-4">{catalogConfig.descricao}</p>
+            <p className="text-gray-400 text-sm mb-4">{forms.catalogConfig.descricao}</p>
             <div className="bg-gray-700 rounded-lg p-3">
-              <p className="text-white text-sm">sellvibe.store/{catalogConfig.endereco}</p>
+              <p className="text-white text-sm">sellvibe.store/{forms.catalogConfig.endereco}</p>
             </div>
           </div>
         </div>
@@ -1516,27 +1411,27 @@ function Dashboard() {
           <div className="relative">
             <label className="block text-gray-400 text-sm mb-1">Nova Senha</label>
             <input 
-              type={showPassword ? "text" : "password"}
+              type={ui.showPassword ? "text" : "password"}
               className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 pr-10 border border-gray-600 focus:border-emerald-500 focus:outline-none"
             />
             <button 
-              onClick={() => setShowPassword(!showPassword)}
+              onClick={() => ui.togglePassword()}
               className="absolute right-3 top-8 text-gray-400 hover:text-white"
             >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {ui.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
           <div className="relative">
             <label className="block text-gray-400 text-sm mb-1">Confirmar Nova Senha</label>
             <input 
-              type={showConfirmPassword ? "text" : "password"}
+              type={ui.showConfirmPassword ? "text" : "password"}
               className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 pr-10 border border-gray-600 focus:border-emerald-500 focus:outline-none"
             />
             <button 
-              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              onClick={() => ui.toggleConfirmPassword()}
               className="absolute right-3 top-8 text-gray-400 hover:text-white"
             >
-              {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {ui.showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -1554,7 +1449,7 @@ function Dashboard() {
   );
 
   const renderContent = () => {
-    switch(activeMenu) {
+    switch(ui.activeMenu) {
       case 'dashboard': return renderDashboard();
       case 'pedidos': return renderPedidos();
       case 'clientes': return renderClientes();
@@ -1567,7 +1462,7 @@ function Dashboard() {
   };
 
   const renderModalContent = () => {
-    switch(modalType) {
+    switch(ui.modalType) {
       case 'cliente': return <ClienteForm />;
       default: return null;
     }
@@ -1584,8 +1479,8 @@ function Dashboard() {
               className="w-[120px] h-[120px] bg-gray-700 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-600 cursor-pointer hover:border-emerald-500 transition-colors"
               onClick={() => fileInputRef.current?.click()}
             >
-              {logoUrl ? (
-                <img src={logoUrl} alt="Logo" className="w-full h-full object-contain rounded-lg" />
+              {ui.logoUrl ? (
+                <img src={ui.logoUrl} alt="Logo" className="w-full h-full object-contain rounded-lg" />
               ) : (
                 <div className="text-center">
                   <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -1605,11 +1500,11 @@ function Dashboard() {
           <nav className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeMenu === item.id;
+              const isActive = ui.activeMenu === item.id;
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveMenu(item.id)}
+                  onClick={() => ui.setActiveMenu(item.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                     isActive 
                       ? 'bg-emerald-500 text-white' 
@@ -1632,7 +1527,7 @@ function Dashboard() {
         <header className="bg-gray-800 border-b border-gray-700 px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <h1 className="text-xl font-semibold text-white capitalize">{activeMenu}</h1>
+              <h1 className="text-xl font-semibold text-white capitalize">{ui.activeMenu}</h1>
             </div>
             <div className="flex items-center gap-4">
               <div className="relative">
@@ -1648,7 +1543,7 @@ function Dashboard() {
               <div className="relative">
                 <button 
                   className="relative text-gray-400 hover:text-white"
-                  onClick={() => setShowNotifications(!showNotifications)}
+                  onClick={() => ui.toggleNotifications()}
                 >
                   <Bell className="w-5 h-5" />
                   {getNotifications.length > 0 && (
@@ -1658,7 +1553,7 @@ function Dashboard() {
                   )}
                 </button>
                 
-                {showNotifications && (
+                {ui.showNotifications && (
                   <div className="absolute right-0 top-8 w-80 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
                     <div className="p-4 border-b border-gray-600">
                       <h3 className="text-white font-medium">Notificações</h3>
@@ -1721,4 +1616,23 @@ function Dashboard() {
   );
 }
 
-export default Dashboard;
+// Main App component that provides context and initial data
+function App() {
+  // Initial data for the context
+  const initialData = {
+    clients: mockClients,
+    orders: mockOrders,
+    products: mockProducts,
+    categories: mockCategories,
+    transactions: mockTransactions,
+    agenda: mockAgenda
+  };
+
+  return (
+    <DashboardProvider initialData={initialData}>
+      <Dashboard />
+    </DashboardProvider>
+  );
+}
+
+export default App;
