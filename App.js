@@ -1,5 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import './App.css';
+import { statusOptions } from './src/constants/statusOptions';
+import { tamanhosPorCategoria } from './src/constants/tamanhosPorCategoria';
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -108,17 +110,6 @@ const modelos = ['Camiseta Tradicional', 'Baby Look', 'Infantil', 'Calça de Bri
 const tecidos = ['PV', 'Algodão', 'Dryfit', 'Piquet'];
 const personalizacoes = ['Silk Screen', 'Sublimação Total', 'Bordado'];
 const posicoes = ['Frente', 'Costas', 'Manga Esquerda', 'Manga Direita', 'Lateral Esquerda', 'Lateral Direita', 'Barra'];
-const statusOptions = ['Fazer Mockup', 'Aguardando Cliente', 'Aprovado', 'Pedir Tecido', 'Corte', 'Costura', 'Bordado', 'Silk', 'Sublimação', 'Concluído', 'Entregue', 'Pago'];
-
-// Tamanhos específicos por categoria (do arquivo original)
-const tamanhosPorCategoria = {
-  'Infantil': ['01', '02', '04', '06', '08', '10', '12', '14'],
-  'Baby Look': ['PP', 'P', 'M', 'G', 'GG', 'EGG', 'EGG1', 'EGG2', 'Sob Medida'],
-  'Camiseta Tradicional': ['PP', 'P', 'M', 'G', 'GG', 'EGG', 'EGG1', 'EGG2', 'Sob Medida'],
-  'Calça de Brim': ['PP', 'P', 'M', 'G', 'GG', 'EGG', 'EGG1', 'EGG2', 'Sob Medida'],
-  'Moletom': ['PP', 'P', 'M', 'G', 'GG', 'EGG', 'EGG1', 'EGG2', 'Sob Medida'],
-  'Polo': ['PP', 'P', 'M', 'G', 'GG', 'EGG', 'EGG1', 'EGG2', 'Sob Medida']
-};
 
 // Tamanhos que têm valor adicional
 const tamanhosComValorAdicional = ['EGG', 'EGG1', 'EGG2', 'Sob Medida'];
