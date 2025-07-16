@@ -542,6 +542,83 @@ function Dashboard() {
     }
   }, [clientForm, closeModal]);
 
+  // FUNÇÕES PARA PEDIDOS
+  const criarPedido = useCallback(async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      // Calcular totais baseado nos itens
+      let valorTotal = 0;
+      let quantidadeTotal = 0;
+      
+      const itensCalculados = orderForm.itens.map(item => {
+        const { valorTotal: itemTotal, quantidadeTotal: itemQtd } = calcularValorComAdicional(
+          item.valor_unitario || 0, 
+          item.tamanhos || {}
+        );
+        valorTotal += itemTotal;
+        quantidadeTotal += itemQtd;
+        
+        return {
+          ...item,
+          quantidade_total: itemQtd
+        };
+      });
+      
+      const novoPedidoData = {
+        id: Date.now(),
+        cliente: orderForm.cliente_empresa,
+        cliente_empresa: orderForm.cliente_empresa,
+        modelo: itensCalculados[0]?.modelo || '',
+        quantidade: quantidadeTotal,
+        cor: itensCalculados[0]?.cor || '',
+        tamanhos: itensCalculados[0]?.tamanhos || {},
+        precoUnitario: itensCalculados[0]?.valor_unitario || 0,
+        total: valorTotal,
+        valor_total: valorTotal,
+        entrada_paga: 0,
+        saldo_restante: valorTotal,
+        status: 'Fazer Mockup',
+        dataEntrega: orderForm.previsao_entrega,
+        dataPedido: new Date().toISOString().split('T')[0],
+        itens: itensCalculados,
+        observacoes: orderForm.observacoes,
+        layout_images: orderForm.layout_images || []
+      };
+      
+      setOrders(prev => [...prev, novoPedidoData]);
+      
+      // Reset form
+      setOrderForm({
+        cliente_id: '',
+        cliente_empresa: '',
+        itens: [{
+          modelo: '',
+          tecido: '',
+          cor: '',
+          tamanhos: {},
+          personalizacao: '',
+          posicoes: [],
+          valor_unitario: 0,
+          quantidade_total: 0,
+          valor_adicional: 0
+        }],
+        previsao_entrega: '',
+        observacoes: '',
+        layout_images: []
+      });
+      
+      closeModal();
+      alert('Pedido criado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao criar pedido:', error);
+      alert('Erro ao criar pedido');
+    } finally {
+      setLoading(false);
+    }
+  }, [orderForm, closeModal, calcularValorComAdicional, setOrders]);
+
   const excluirCliente = useCallback((clienteId, empresaCliente) => {
     if (window.confirm(`Tem certeza que deseja excluir o cliente "${empresaCliente}"?`)) {
       setClients(prev => prev.filter(c => c.id !== clienteId));
@@ -677,6 +754,335 @@ function Dashboard() {
       </div>
     </form>
   ));
+
+  // COMPONENTE DE FORMULÁRIO DE PEDIDO
+  const PedidoForm = React.memo(() => {
+    const clienteAtual = orderForm.itens[0] || {};
+    
+    // Função para buscar clientes
+    const buscarClientes = useCallback((termo) => {
+      if (!termo.trim()) {
+        setClientesFiltrados([]);
+        return;
+      }
+      const filtrados = clients.filter(client => 
+        client.empresa.toLowerCase().includes(termo.toLowerCase()) ||
+        client.contato.toLowerCase().includes(termo.toLowerCase())
+      );
+      setClientesFiltrados(filtrados);
+    }, [clients]);
+
+    // Função para selecionar cliente
+    const selecionarCliente = useCallback((cliente) => {
+      setOrderForm(prev => ({
+        ...prev,
+        cliente_id: cliente.id,
+        cliente_empresa: cliente.empresa
+      }));
+      setBuscaCliente(cliente.empresa);
+      setClientesFiltrados([]);
+    }, []);
+
+    // Função para atualizar item
+    const atualizarItem = useCallback((campo, valor) => {
+      setOrderForm(prev => ({
+        ...prev,
+        itens: prev.itens.map((item, index) => 
+          index === 0 ? { ...item, [campo]: valor } : item
+        )
+      }));
+    }, []);
+
+    // Função para atualizar tamanhos
+    const atualizarTamanho = useCallback((tamanho, quantidade) => {
+      const qtd = parseInt(quantidade) || 0;
+      setOrderForm(prev => ({
+        ...prev,
+        itens: prev.itens.map((item, index) => 
+          index === 0 ? { 
+            ...item, 
+            tamanhos: { 
+              ...item.tamanhos, 
+              [tamanho]: qtd > 0 ? qtd : undefined 
+            }
+          } : item
+        )
+      }));
+    }, []);
+
+    // Função para toggle posições
+    const togglePosicao = useCallback((posicao) => {
+      setOrderForm(prev => ({
+        ...prev,
+        itens: prev.itens.map((item, index) => {
+          if (index === 0) {
+            const posicoes = item.posicoes || [];
+            const novasPosicoes = posicoes.includes(posicao)
+              ? posicoes.filter(p => p !== posicao)
+              : [...posicoes, posicao];
+            return { ...item, posicoes: novasPosicoes };
+          }
+          return item;
+        })
+      }));
+    }, []);
+
+    const tamanhosDisponiveis = tamanhosPorCategoria[clienteAtual.modelo] || [];
+    const { valorTotal } = calcularValorComAdicional(clienteAtual.valor_unitario || 0, clienteAtual.tamanhos || {});
+
+    return (
+      <form onSubmit={criarPedido} className="space-y-6">
+        {/* Seção Cliente */}
+        <div className="bg-gray-700 p-4 rounded-lg">
+          <h4 className="text-white font-medium mb-3">Informações do Cliente</h4>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Cliente *</label>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={buscaCliente}
+                  onChange={(e) => {
+                    setBuscaCliente(e.target.value);
+                    buscarClientes(e.target.value);
+                  }}
+                  placeholder="Digite o nome da empresa ou contato..."
+                  className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500" 
+                  required
+                />
+                {clientesFiltrados.length > 0 && (
+                  <div className="absolute z-10 w-full bg-gray-600 border border-gray-500 rounded-lg mt-1 max-h-40 overflow-y-auto">
+                    {clientesFiltrados.map((cliente) => (
+                      <button
+                        key={cliente.id}
+                        type="button"
+                        onClick={() => selecionarCliente(cliente)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-500 text-white"
+                      >
+                        <div className="font-medium">{cliente.empresa}</div>
+                        <div className="text-sm text-gray-300">{cliente.contato} - {cliente.telefone}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {!orderForm.cliente_id && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="novoCliente"
+                  checked={mostrarFormularioCliente}
+                  onChange={(e) => setMostrarFormularioCliente(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="novoCliente" className="text-gray-300 text-sm">Cliente não encontrado? Criar novo cliente</label>
+              </div>
+            )}
+
+            {mostrarFormularioCliente && (
+              <div className="bg-gray-600 p-3 rounded space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Nome da Empresa"
+                    value={clientForm.empresa}
+                    onChange={(e) => setClientForm(prev => ({...prev, empresa: e.target.value}))}
+                    className="bg-gray-500 text-white rounded px-3 py-2 border border-gray-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Nome do Contato"
+                    value={clientForm.contato}
+                    onChange={(e) => setClientForm(prev => ({...prev, contato: e.target.value}))}
+                    className="bg-gray-500 text-white rounded px-3 py-2 border border-gray-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Telefone"
+                    value={clientForm.telefone}
+                    onChange={(e) => setClientForm(prev => ({...prev, telefone: e.target.value}))}
+                    className="bg-gray-500 text-white rounded px-3 py-2 border border-gray-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Endereço"
+                    value={clientForm.endereco}
+                    onChange={(e) => setClientForm(prev => ({...prev, endereco: e.target.value}))}
+                    className="bg-gray-500 text-white rounded px-3 py-2 border border-gray-400"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Seção Produto */}
+        <div className="bg-gray-700 p-4 rounded-lg">
+          <h4 className="text-white font-medium mb-3">Informações do Produto</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Modelo *</label>
+              <select 
+                value={clienteAtual.modelo || ''}
+                onChange={(e) => atualizarItem('modelo', e.target.value)}
+                className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500"
+                required
+              >
+                <option value="">Selecione o modelo</option>
+                {modelos.map((modelo, idx) => (
+                  <option key={idx} value={modelo}>{modelo}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Tecido *</label>
+              <select 
+                value={clienteAtual.tecido || ''}
+                onChange={(e) => atualizarItem('tecido', e.target.value)}
+                className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500"
+                required
+              >
+                <option value="">Selecione o tecido</option>
+                {tecidos.map((tecido, idx) => (
+                  <option key={idx} value={tecido}>{tecido}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Cor *</label>
+              <input 
+                type="text" 
+                value={clienteAtual.cor || ''}
+                onChange={(e) => atualizarItem('cor', e.target.value)}
+                placeholder="Ex: Azul, Vermelho..."
+                className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500" 
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Personalização *</label>
+              <select 
+                value={clienteAtual.personalizacao || ''}
+                onChange={(e) => atualizarItem('personalizacao', e.target.value)}
+                className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500"
+                required
+              >
+                <option value="">Selecione a personalização</option>
+                {personalizacoes.map((pers, idx) => (
+                  <option key={idx} value={pers}>{pers}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Valor Unitário *</label>
+              <input 
+                type="number" 
+                step="0.01"
+                min="0"
+                value={clienteAtual.valor_unitario || ''}
+                onChange={(e) => atualizarItem('valor_unitario', parseFloat(e.target.value) || 0)}
+                placeholder="0.00"
+                className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500" 
+                required
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Seção Tamanhos */}
+        {tamanhosDisponiveis.length > 0 && (
+          <div className="bg-gray-700 p-4 rounded-lg">
+            <h4 className="text-white font-medium mb-3">Tamanhos e Quantidades</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {tamanhosDisponiveis.map((tamanho) => (
+                <div key={tamanho}>
+                  <label className="block text-gray-300 text-sm mb-1">
+                    {tamanho}
+                    {tamanhosComValorAdicional.includes(tamanho) && (
+                      <span className="text-yellow-400 ml-1">(+R$5)</span>
+                    )}
+                  </label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    value={clienteAtual.tamanhos?.[tamanho] || ''}
+                    onChange={(e) => atualizarTamanho(tamanho, e.target.value)}
+                    className="w-full bg-gray-600 text-white rounded px-2 py-1 border border-gray-500" 
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Seção Posições */}
+        <div className="bg-gray-700 p-4 rounded-lg">
+          <h4 className="text-white font-medium mb-3">Posições da Personalização</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {posicoes.map((posicao) => (
+              <label key={posicao} className="flex items-center gap-2 text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={clienteAtual.posicoes?.includes(posicao) || false}
+                  onChange={() => togglePosicao(posicao)}
+                  className="w-4 h-4"
+                />
+                {posicao}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Seção Outras Informações */}
+        <div className="bg-gray-700 p-4 rounded-lg">
+          <h4 className="text-white font-medium mb-3">Outras Informações</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Previsão de Entrega</label>
+              <input 
+                type="date" 
+                value={orderForm.previsao_entrega}
+                onChange={(e) => setOrderForm(prev => ({...prev, previsao_entrega: e.target.value}))}
+                className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500" 
+              />
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Valor Total</label>
+              <div className="w-full bg-gray-600 text-emerald-400 font-bold rounded-lg px-3 py-2 border border-gray-500">
+                R$ {valorTotal.toFixed(2)}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4">
+            <label className="block text-gray-300 text-sm mb-2">Observações</label>
+            <textarea 
+              rows="3"
+              value={orderForm.observacoes}
+              onChange={(e) => setOrderForm(prev => ({...prev, observacoes: e.target.value}))}
+              placeholder="Observações sobre o pedido..."
+              className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 border border-gray-500" 
+            />
+          </div>
+        </div>
+
+        {/* Botões */}
+        <div className="flex gap-3 pt-4">
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 px-4 rounded-lg disabled:opacity-50"
+          >
+            {loading ? 'Salvando...' : 'Salvar Pedido'}
+          </button>
+          <button type="button" onClick={closeModal} className="px-6 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    );
+  });
 
   // RENDERIZAÇÃO DAS SEÇÕES
   const renderDashboard = () => (
@@ -1569,6 +1975,7 @@ function Dashboard() {
   const renderModalContent = () => {
     switch(modalType) {
       case 'cliente': return <ClienteForm />;
+      case 'pedido': return <PedidoForm />;
       default: return null;
     }
   };
